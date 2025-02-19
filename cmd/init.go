@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"scribe/internal/config"
+	"scribe/internal/history"
 	"scribe/internal/remote"
 	"strconv"
 
@@ -86,8 +87,22 @@ var initCmd = &cobra.Command{
 			return
 		}
 
-		if err := c.Save(); err != nil {
+		if err := history.Init(); err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, "failed to initialize history:", err.Error())
+		}
+
+		if err := c.SaveNew(); err != nil {
 			_, _ = fmt.Fprintln(os.Stderr, "failed to save config:", err.Error())
+			_ = r.Close()
+			os.Exit(1)
+			return
+		}
+
+		if err := r.InitialCommit(); err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, "failed to create initial commit:", err.Error())
+			_ = r.Close()
+			os.Exit(1)
+			return
 		}
 
 		if err := r.Close(); err != nil {

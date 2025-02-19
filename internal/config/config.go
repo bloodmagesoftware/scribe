@@ -4,18 +4,24 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"scribe/internal/util"
 
 	"github.com/zalando/go-keyring"
 	"gopkg.in/yaml.v3"
 )
 
-const keyringService = "de.bloodmagesoftware.scribe"
+const (
+	keyringService = "de.bloodmagesoftware.scribe"
+	ConfigFileName = ".scribe.yaml"
+)
 
 var DefaultIgnore = []string{
 	".DS_Store",
-	".vs",
-	".idea",
-	".vscode",
+	".vs/",
+	".idea/",
+	".vscode/",
+	".git/",
 	"*.slo",
 	"*.lo",
 	"*.o",
@@ -34,57 +40,81 @@ var DefaultIgnore = []string{
 	"*.out",
 	"*.app",
 	"*.ipa",
-	"*.xcodeproj",
-	"*.xcworkspace",
-	"*.sln",
-	"*.suo",
-	"*.opensdf",
-	"*.sdf",
-	"*.VC.db",
-	"*.VC.opendb",
-	"SourceArt/**/*.png",
-	"SourceArt/**/*.tga",
-	"Binaries/*",
-	"Plugins/**/Binaries/*",
-	"Build/*",
-	"!Build/*/",
-	"Build/*/**",
-	"!Build/*/PakBlacklist*.txt",
-	"!Build/**/*.ico",
-	"*_BuiltData.uasset",
-	"Saved/*",
-	"Intermediate/*",
-	"Plugins/**/Intermediate/*",
-	"DerivedDataCache/*",
 }
 
 type Config struct {
+	Version  uint8    `yaml:"version"`
 	Host     string   `yaml:"host"`
 	Port     int      `yaml:"port"`
 	User     string   `yaml:"user"`
 	Password string   `yaml:"-"`
 	Path     string   `yaml:"path"`
+	Commit   int64    `yaml:"commit"`
 	Ignore   []string `yaml:"ignore"`
+	Location string   `yaml:"-"`
+}
+
+func findConfigFile() (string, error) {
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	for {
+		fp := filepath.Join(wd, ConfigFileName)
+		if util.Exists(fp) {
+			return fp, nil
+		}
+		parent := filepath.Dir(wd)
+		if parent == wd || parent == "/" || parent == "." {
+			break
+		}
+	}
+	return "", errors.New("no " + ConfigFileName + " found")
 }
 
 func (c *Config) fullUser() string {
 	return fmt.Sprintf("%s@%s:%d", c.User, c.Host, c.Port)
 }
 
-func (c *Config) Save() error {
+func (c *Config) SaveNew() error {
 	var f *os.File
 	{
 		var err error
-		f, err = os.OpenFile(".scribe.yaml", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+		f, err = os.Create(ConfigFileName)
 		if err != nil {
-			return errors.Join(errors.New("failed to open file .scribe.yaml"), err)
+			return errors.Join(errors.New("failed to open file "+ConfigFileName), err)
 		}
+	}
+	c.Location, _ = filepath.Abs(f.Name())
+	c.Version = 1
+
+	ye := yaml.NewEncoder(f)
+	ye.SetIndent(4)
+	if err := ye.Encode(c); err != nil {
+		return errors.Join(errors.New("failed to yaml encode into file "+ConfigFileName), err)
+	}
+
+	if err := keyring.Set(
+		keyringService,
+		c.fullUser(),
+		c.Password,
+	); err != nil {
+		return errors.Join(errors.New("failed to set keyring credentials"), err)
+	}
+
+	return nil
+}
+
+func (c *Config) Save() error {
+	f, err := os.Create(c.Location)
+	if err != nil {
+		return errors.Join(errors.New("failed to open file "+ConfigFileName), err)
 	}
 
 	ye := yaml.NewEncoder(f)
 	ye.SetIndent(4)
 	if err := ye.Encode(c); err != nil {
-		return errors.Join(errors.New("failed to yaml encode into file .scribe.yaml"), err)
+		return errors.Join(errors.New("failed to yaml encode into file "+ConfigFileName), err)
 	}
 
 	if err := keyring.Set(
@@ -99,19 +129,22 @@ func (c *Config) Save() error {
 }
 
 func Load() (*Config, error) {
-	var f *os.File
-	{
-		var err error
-		f, err = os.OpenFile(".scribe.yaml", os.O_RDONLY, 0600)
-		if err != nil {
-			return nil, errors.Join(errors.New("failed to open file .scribe.yaml"), err)
-		}
+	cfp, err := findConfigFile()
+	if err != nil {
+		return nil, errors.Join(errors.New("failed to find config file"), err)
 	}
 
+	var f *os.File
+	f, err = os.Open(cfp)
+	if err != nil {
+		return nil, errors.Join(errors.New("failed to open file "+ConfigFileName), err)
+	}
+	defer f.Close()
+
 	yd := yaml.NewDecoder(f)
-	c := &Config{}
+	c := &Config{Location: cfp}
 	if err := yd.Decode(c); err != nil {
-		return nil, errors.Join(errors.New("failed to yaml decode from file .scribe.yaml"), err)
+		return nil, errors.Join(errors.New("failed to yaml decode from file "+ConfigFileName), err)
 	}
 
 	{
