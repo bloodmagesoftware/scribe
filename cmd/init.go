@@ -6,6 +6,7 @@ import (
 	"os"
 	"scribe/internal/config"
 	"scribe/internal/history"
+	"scribe/internal/options"
 	"scribe/internal/remote"
 	"strconv"
 
@@ -39,7 +40,11 @@ var initCmd = &cobra.Command{
 	Short: "Initialize a new Scribe repository",
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Print(art)
-		c := &config.Config{Ignore: config.DefaultIgnore}
+		c, err := config.Load()
+		if err != nil {
+			err = nil
+			c = &config.Config{Ignore: config.DefaultIgnore}
+		}
 		port := "22"
 		if err := huh.NewForm(huh.NewGroup(
 			huh.NewInput().
@@ -74,7 +79,6 @@ var initCmd = &cobra.Command{
 			return
 		}
 
-		var err error
 		c.Port, err = strconv.Atoi(port)
 		if err != nil {
 			panic(err)
@@ -85,6 +89,18 @@ var initCmd = &cobra.Command{
 			_, _ = fmt.Fprintln(os.Stderr, "failed to connect to remote:", err.Error())
 			os.Exit(1)
 			return
+		}
+
+		if !options.FlagForce {
+			if empty, err := r.RepoIsEmpty(); err != nil {
+				_, _ = fmt.Fprintln(os.Stderr, "failed checking if remote directory is empty:", err.Error())
+				os.Exit(1)
+				return
+			} else if !empty {
+				_, _ = fmt.Fprintln(os.Stderr, "Remote directory exists and is not empty. Delete it manually or choose another remote directory.")
+				os.Exit(2)
+				return
+			}
 		}
 
 		if err := history.Init(); err != nil {

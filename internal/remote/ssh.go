@@ -6,6 +6,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"scribe/internal/config"
+	"scribe/internal/options"
 	"scribe/internal/util"
 
 	"github.com/charmbracelet/huh"
@@ -19,6 +20,9 @@ func hostKeyCallback() ssh.HostKeyCallback {
 		if util.Exists(path) {
 			if hostKeyCallback, err := knownhosts.New(path); err == nil {
 				return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+					if options.FlagForce {
+						return nil
+					}
 					ok := false
 					if err := hostKeyCallback(hostname, remote, key); err != nil {
 						if fErr := huh.NewForm(huh.NewGroup(

@@ -188,6 +188,27 @@ func (r *Remote) WriteCommit(f *os.File, c *history.Commit) error {
 	return nil
 }
 
+func (r *Remote) RepoIsEmpty() (bool, error) {
+	fi, err := r.SftpClient.Stat(r.WD)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return true, nil
+		}
+		return false, errors.Join(errors.New("failed to read repo remote dir info "+r.WD), err)
+	}
+
+	if !fi.IsDir() {
+		return false, fmt.Errorf("remote dir path exists but is not a directory: %s", r.WD)
+	}
+
+	fis, err := r.SftpClient.ReadDir(r.WD)
+	if err != nil {
+		return false, errors.Join(errors.New("failed to read repo remote dir contents "+r.WD), err)
+	}
+
+	return len(fis) == 0, nil
+}
+
 func (r *Remote) InitialCommit() error {
 	wd, err := os.Getwd()
 	if err != nil {

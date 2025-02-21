@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"os"
+	"scribe/internal/options"
 
 	"github.com/spf13/cobra"
 )
@@ -9,6 +10,10 @@ import (
 var rootCmd = &cobra.Command{
 	Use:   "scb",
 	Short: "SFTP based VCS",
+}
+
+func init() {
+	rootCmd.PersistentFlags().BoolVar(&options.FlagForce, "force", false, "enforce an illegal action, which could lead to unintentional data loss")
 }
 
 func Execute() {
