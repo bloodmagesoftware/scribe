@@ -4,11 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"regexp"
 	"scribe/internal/config"
+	"scribe/internal/history"
 	"scribe/internal/remote"
 	"strconv"
 
+	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 )
 
@@ -18,6 +21,18 @@ var cloneCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) != 2 {
 			return fmt.Errorf("Invalid count of arguments for clone: %d. 2 required: clone <share> <target dir>", len(args))
+		}
+
+		if err := os.MkdirAll(args[1], 0764); err != nil {
+			return err
+		}
+		if dir, err := os.ReadDir(args[1]); err != nil {
+			return err
+		} else if len(dir) != 0 {
+			return fmt.Errorf("directory %s exists and is not empty", args[1])
+		}
+		if err := os.Chdir(args[1]); err != nil {
+			return err
 		}
 
 		shareRegexp := regexp.MustCompile(`^(.+)@([^:]+):(\d+)#(.+)$`)
@@ -35,6 +50,15 @@ var cloneCmd = &cobra.Command{
 			Path:    matches[4],
 		}
 
+		if err := huh.NewForm(huh.NewGroup(
+			huh.NewInput().
+				Title(fmt.Sprintf("Password for %s@%s", c.User, c.Host)).
+				EchoMode(huh.EchoModePassword).
+				Value(&c.Password),
+		)).Run(); err != nil {
+			return err
+		}
+
 		log.Println("connect to remote")
 		r, err := remote.Connect(c)
 		if err != nil {
@@ -44,6 +68,11 @@ var cloneCmd = &cobra.Command{
 
 		if err := c.SaveNew(); err != nil {
 			return errors.Join(errors.New("failed to save new config file"), err)
+		}
+
+		log.Println("initialize local history")
+		if err := history.Init(); err != nil {
+			return errors.Join(errors.New("failed to initialize history"), err)
 		}
 
 		log.Println("pull commits from remote")

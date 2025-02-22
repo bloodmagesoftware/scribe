@@ -13,6 +13,7 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
+	rootCmd.SilenceUsage = true
 	rootCmd.PersistentFlags().BoolVar(&options.FlagForce, "force", false, "enforce an illegal action, which could lead to unintentional data loss")
 }
 

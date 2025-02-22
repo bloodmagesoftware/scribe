@@ -88,7 +88,7 @@ var initCmd = &cobra.Command{
 			return errors.Join(errors.New("failed to connect to remote"), err)
 		}
 
-        defer r.Close()
+		defer r.Close()
 
 		if !options.FlagForce {
 			log.Println("check if remote repo does not exist")
@@ -102,9 +102,7 @@ var initCmd = &cobra.Command{
 		log.Println("initialize local history")
 		if err := history.Init(); err != nil {
 			return errors.Join(errors.New("failed to initialize history"), err)
-        }
-
-
+		}
 
 		log.Println("save local scribe config")
 		if err := c.SaveNew(); err != nil {
@@ -116,7 +114,7 @@ var initCmd = &cobra.Command{
 			return errors.Join(errors.New("failed to create initial commit"), err)
 		}
 
-        return nil
+		return nil
 	},
 }
 
