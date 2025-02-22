@@ -110,18 +110,18 @@ func (r *Remote) Write(f *os.File, p string) error {
 	return nil
 }
 
-func (r *Remote) Read(p string) error {
-	if err := os.MkdirAll(path.Join(r.LocalWD(), filepath.Dir(p)), 0764); err != nil && !os.IsExist(err) {
+func (r *Remote) Read(remote string, local string) error {
+	if err := os.MkdirAll(path.Join(r.LocalWD(), filepath.Dir(local)), 0764); err != nil && !os.IsExist(err) {
 		return errors.Join(errors.New("failed to create parent directories"), err)
 	}
 
-	f, err := os.Create(path.Join(r.LocalWD(), p))
+	f, err := os.Create(path.Join(r.LocalWD(), local))
 	if err != nil {
 		return errors.Join(errors.New("failed to create file"), err)
 	}
 	defer f.Close()
 
-	rf, err := r.SftpClient.Open(path.Join(r.WD, p))
+	rf, err := r.SftpClient.Open(path.Join(r.WD, remote))
 	if err != nil {
 		return errors.Join(errors.New("failed to open remote file"), err)
 	}
@@ -178,6 +178,13 @@ func (r *Remote) HasObject(h string) (bool, error) {
 func (r *Remote) WriteObject(f *os.File, h string) error {
 	if err := r.Write(f, path.Join(DirObjects, hashToObjectPath(h))); err != nil {
 		return errors.Join(errors.New("failed to write object file"), err)
+	}
+	return nil
+}
+
+func (r *Remote) ReadObject(cf history.CommitFile) error {
+	if err := r.Read(path.Join(DirObjects, hashToObjectPath(cf.Hash)), cf.Path); err != nil {
+		return errors.Join(errors.New("failed to read object file"), err)
 	}
 	return nil
 }
@@ -366,7 +373,7 @@ func (r *Remote) PullCommits() error {
 			continue
 		}
 
-		if err := r.Read(path.Join(r.WD, DirCommits, name)); err != nil {
+		if err := r.Read(path.Join(DirCommits, name), path.Join(".scribe", name)); err != nil {
 			return errors.Join(fmt.Errorf("failed to read remote file %s", name), err)
 		}
 	}
@@ -404,6 +411,20 @@ func (r *Remote) GetHeadCommit() (*history.Commit, error) {
 	return c, nil
 }
 
+func (r *Remote) CloneCommit(c *history.Commit) error {
+	r.Config.Ignore = c.Ignore
+
+	// get files from remote
+	for _, f := range c.Files {
+		if err := r.ReadObject(f); err != nil {
+			return errors.Join(errors.New("failed to read object from remote"), err)
+		}
+	}
+
+	r.Config.Commit = c.Created
+	return r.Config.Save()
+}
+
 func (r *Remote) CheckoutCommit(c *history.Commit) error {
 	if r.Config.Commit == c.Created {
 		return nil
@@ -428,28 +449,22 @@ func (r *Remote) CheckoutCommit(c *history.Commit) error {
 
 	// get files from remote
 	for _, f := range c.Files {
-		if err := func() error {
-			// check if file exists
-			ccf, exists := currentCommit.File(f.Path)
-			if exists {
-				// check if file has changed on remote
-				if ccf.Hash == f.Hash {
-					return nil
-				}
-				// check if file has changed locally
-				if locallyChanged.HasModifyOrDelete(f.Path) {
-					panic(fmt.Sprintf("checkout failed: conflict %s (local and remote modified/deleted)\n", f.Path))
-				}
-			} else {
-				// locally also created?
-				if locallyChanged.HasCreate(f.Path) {
-					panic(fmt.Sprintf("checkout failed: conflict %s (local and remote created)\n", f.Path))
-				}
+		// check if file exists
+		ccf, exists := currentCommit.File(f.Path)
+		if exists {
+			// check if file has changed on remote
+			if ccf.Hash == f.Hash {
+				continue
 			}
-
-			return nil
-		}(); err != nil {
-			return err
+			// check if file has changed locally
+			if locallyChanged.HasModifyOrDelete(f.Path) {
+				panic(fmt.Sprintf("checkout failed: conflict %s (local and remote modified/deleted)\n", f.Path))
+			}
+		} else {
+			// locally also created?
+			if locallyChanged.HasCreate(f.Path) {
+				panic(fmt.Sprintf("checkout failed: conflict %s (local and remote created)\n", f.Path))
+			}
 		}
 	}
 

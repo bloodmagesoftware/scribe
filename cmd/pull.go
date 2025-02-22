@@ -35,12 +35,12 @@ var pullCmd = &cobra.Command{
 		log.Println("get head commit from remote")
 		head, err := r.GetHeadCommit()
 		if err != nil {
-			return errors.Join(errors.New("failed to disconnect from remote"), err)
+			return errors.Join(errors.New("failed to get head commit from remote"), err)
 		}
 
 		log.Printf("checkout commit %x\n", head.Created)
 		if err := r.CheckoutCommit(head); err != nil {
-			return errors.Join(errors.New("failed to disconnect from remote"), err)
+			return errors.Join(errors.New("failed to checkout commit"), err)
 		}
 
 		return nil

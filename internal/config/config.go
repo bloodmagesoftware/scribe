@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	keyringService = "de.bloodmagesoftware.scribe"
+	KeyringService = "de.bloodmagesoftware.scribe"
 	ConfigFileName = ".scribe.yaml"
 )
 
@@ -59,7 +59,7 @@ func findConfigFile() (string, error) {
 	return "", errors.New("no " + ConfigFileName + " found")
 }
 
-func (c *Config) fullUser() string {
+func (c *Config) FullUser() string {
 	return fmt.Sprintf("%s@%s:%d", c.User, c.Host, c.Port)
 }
 
@@ -82,8 +82,8 @@ func (c *Config) SaveNew() error {
 	}
 
 	if err := keyring.Set(
-		keyringService,
-		c.fullUser(),
+		KeyringService,
+		c.FullUser(),
 		c.Password,
 	); err != nil {
 		return errors.Join(errors.New("failed to set keyring credentials"), err)
@@ -105,8 +105,8 @@ func (c *Config) Save() error {
 	}
 
 	if err := keyring.Set(
-		keyringService,
-		c.fullUser(),
+		KeyringService,
+		c.FullUser(),
 		c.Password,
 	); err != nil {
 		return errors.Join(errors.New("failed to set keyring credentials"), err)
@@ -144,7 +144,7 @@ func Load() (*Config, error) {
 
 	{
 		var err error
-		if c.Password, err = keyring.Get(keyringService, c.fullUser()); err != nil {
+		if c.Password, err = keyring.Get(KeyringService, c.FullUser()); err != nil {
 			return nil, errors.Join(errors.New("failed to get keyring credentials"), err)
 		}
 	}
@@ -153,6 +153,9 @@ func Load() (*Config, error) {
 }
 
 func (c *Config) CurrentCommit() (*history.Commit, error) {
+	if c.Commit == 0 {
+		return nil, errors.New("no commit checked out")
+	}
 	f, err := os.Open(filepath.Join(filepath.Dir(c.Location), ".scribe", fmt.Sprintf("%x.yaml", c.Commit)))
 	if err != nil {
 		return nil, errors.Join(fmt.Errorf("failed to open commit file for commit %x", c.Commit), err)

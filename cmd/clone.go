@@ -13,6 +13,7 @@ import (
 
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
+	"github.com/zalando/go-keyring"
 )
 
 var cloneCmd = &cobra.Command{
@@ -50,7 +51,9 @@ var cloneCmd = &cobra.Command{
 			Path:    matches[4],
 		}
 
-		if err := huh.NewForm(huh.NewGroup(
+		if pwd, err := keyring.Get(config.KeyringService, c.FullUser()); err == nil {
+			c.Password = pwd
+		} else if err := huh.NewForm(huh.NewGroup(
 			huh.NewInput().
 				Title(fmt.Sprintf("Password for %s@%s", c.User, c.Host)).
 				EchoMode(huh.EchoModePassword).
@@ -83,12 +86,12 @@ var cloneCmd = &cobra.Command{
 		log.Println("get head commit from remote")
 		head, err := r.GetHeadCommit()
 		if err != nil {
-			return errors.Join(errors.New("failed to disconnect from remote"), err)
+			return errors.Join(errors.New("failed to get head commit"), err)
 		}
 
 		log.Printf("checkout commit %x\n", head.Created)
-		if err := r.CheckoutCommit(head); err != nil {
-			return errors.Join(errors.New("failed to disconnect from remote"), err)
+		if err := r.CloneCommit(head); err != nil {
+			return errors.Join(errors.New("failed to checkout commit"), err)
 		}
 
 		return nil
