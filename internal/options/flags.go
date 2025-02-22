@@ -1,5 +1,6 @@
 package options
 
 var (
-	FlagForce bool
+	FlagForce   bool
+	FlagMessage []string = []string{}
 )

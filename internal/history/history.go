@@ -17,6 +17,8 @@ type (
 	Commit struct {
 		Created int64        `yaml:"created_at"`
 		Files   []CommitFile `yaml:"files"`
+		Message string       `yaml:"message"`
+		Ignore  string       `yaml:"ignore"`
 		fp      string       `yaml:"-"`
 	}
 
@@ -99,4 +101,13 @@ func (c *Commit) FileName() string {
 		c.Created = time.Now().Unix()
 	}
 	return fmt.Sprintf("%x.yaml", c.Created)
+}
+
+func (c *Commit) File(name string) (CommitFile, bool) {
+	for _, f := range c.Files {
+		if f.Path == name {
+			return f, true
+		}
+	}
+	return CommitFile{}, false
 }

@@ -2,21 +2,37 @@ package cmd
 
 import (
 	"errors"
+	"fmt"
 	"log"
+	"regexp"
 	"scribe/internal/config"
 	"scribe/internal/remote"
+	"strconv"
 
 	"github.com/spf13/cobra"
 )
 
-var pullCmd = &cobra.Command{
-	Use:   "pull",
-	Short: "pull latest changes from remote",
+var cloneCmd = &cobra.Command{
+	Use:   "clone",
+	Short: "clone a repository into a new directory",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		log.Println("load local config")
-		c, err := config.Load()
-		if err != nil {
-			return errors.Join(errors.New("failed to load config"), err)
+		if len(args) != 2 {
+			return fmt.Errorf("Invalid count of arguments for clone: %d. 2 required: clone <share> <target dir>", len(args))
+		}
+
+		shareRegexp := regexp.MustCompile(`^(.+)@([^:]+):(\d+)#(.+)$`)
+		matches := shareRegexp.FindStringSubmatch(args[0])
+		if len(matches) != 5 {
+			return fmt.Errorf("failed to parse share string %s", args[0])
+		}
+
+		port, _ := strconv.Atoi(matches[3])
+		c := &config.Config{
+			Version: config.Version,
+			Host:    matches[2],
+			Port:    port,
+			User:    matches[1],
+			Path:    matches[4],
 		}
 
 		log.Println("connect to remote")
@@ -24,8 +40,11 @@ var pullCmd = &cobra.Command{
 		if err != nil {
 			return errors.Join(errors.New("failed to connect to remote"), err)
 		}
-
 		defer r.Close()
+
+		if err := c.SaveNew(); err != nil {
+			return errors.Join(errors.New("failed to save new config file"), err)
+		}
 
 		log.Println("pull commits from remote")
 		if err := r.PullCommits(); err != nil {
@@ -48,5 +67,5 @@ var pullCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(pullCmd)
+	rootCmd.AddCommand(cloneCmd)
 }

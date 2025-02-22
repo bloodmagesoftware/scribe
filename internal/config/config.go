@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"scribe/internal/history"
 	"scribe/internal/util"
 
 	"github.com/zalando/go-keyring"
@@ -16,42 +17,27 @@ const (
 	ConfigFileName = ".scribe.yaml"
 )
 
-var DefaultIgnore = []string{
-	".DS_Store",
-	".vs/",
-	".idea/",
-	".vscode/",
-	".git/",
-	"*.slo",
-	"*.lo",
-	"*.o",
-	"*.obj",
-	"*.gch",
-	"*.pch",
-	"*.so",
-	"*.dylib",
-	"*.dll",
-	"*.mod",
-	"*.lai",
-	"*.la",
-	"*.a",
-	"*.lib",
-	"*.exe",
-	"*.out",
-	"*.app",
-	"*.ipa",
-}
+const Version = 1
+
+const DefaultIgnore = `.DS_Store
+.vs/
+.idea/
+.vscode/
+.git/
+.gitattributes
+.gitignore
+`
 
 type Config struct {
-	Version  uint8    `yaml:"version"`
-	Host     string   `yaml:"host"`
-	Port     int      `yaml:"port"`
-	User     string   `yaml:"user"`
-	Password string   `yaml:"-"`
-	Path     string   `yaml:"path"`
-	Commit   int64    `yaml:"commit"`
-	Ignore   []string `yaml:"ignore"`
-	Location string   `yaml:"-"`
+	Version  uint8  `yaml:"version"`
+	Host     string `yaml:"host"`
+	Port     int    `yaml:"port"`
+	User     string `yaml:"user"`
+	Password string `yaml:"-"`
+	Path     string `yaml:"path"`
+	Commit   int64  `yaml:"commit"`
+	Ignore   string `yaml:"ignore"`
+	Location string `yaml:"-"`
 }
 
 func findConfigFile() (string, error) {
@@ -68,6 +54,7 @@ func findConfigFile() (string, error) {
 		if parent == wd || parent == "/" || parent == "." {
 			break
 		}
+		wd = parent
 	}
 	return "", errors.New("no " + ConfigFileName + " found")
 }
@@ -86,7 +73,7 @@ func (c *Config) SaveNew() error {
 		}
 	}
 	c.Location, _ = filepath.Abs(f.Name())
-	c.Version = 1
+	c.Version = Version
 
 	ye := yaml.NewEncoder(f)
 	ye.SetIndent(4)
@@ -128,6 +115,14 @@ func (c *Config) Save() error {
 	return nil
 }
 
+func RepoRoot() (string, error) {
+	cfp, err := findConfigFile()
+	if err != nil {
+		return "", errors.Join(errors.New("failed to find config file"), err)
+	}
+	return filepath.Dir(cfp), nil
+}
+
 func Load() (*Config, error) {
 	cfp, err := findConfigFile()
 	if err != nil {
@@ -155,4 +150,20 @@ func Load() (*Config, error) {
 	}
 
 	return c, nil
+}
+
+func (c *Config) CurrentCommit() (*history.Commit, error) {
+	f, err := os.Open(filepath.Join(filepath.Dir(c.Location), ".scribe", fmt.Sprintf("%x.yaml", c.Commit)))
+	if err != nil {
+		return nil, errors.Join(fmt.Errorf("failed to open commit file for commit %x", c.Commit), err)
+	}
+	defer f.Close()
+
+	yd := yaml.NewDecoder(f)
+	commit := &history.Commit{}
+	if err := yd.Decode(commit); err != nil {
+		return nil, errors.Join(errors.New("failed to decode commit file"), err)
+	}
+
+	return commit, nil
 }

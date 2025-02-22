@@ -3,7 +3,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"os"
+	"log"
 	"scribe/internal/config"
 	"scribe/internal/history"
 	"scribe/internal/options"
@@ -38,7 +38,7 @@ const art = `
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Initialize a new Scribe repository",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		fmt.Print(art)
 		c, err := config.Load()
 		if err != nil {
@@ -74,9 +74,7 @@ var initCmd = &cobra.Command{
 				Title("Path").
 				Value(&c.Path),
 		)).Run(); err != nil {
-			_, _ = fmt.Fprintln(os.Stderr, err.Error())
-			os.Exit(1)
-			return
+			return err
 		}
 
 		c.Port, err = strconv.Atoi(port)
@@ -84,48 +82,41 @@ var initCmd = &cobra.Command{
 			panic(err)
 		}
 
+		log.Println("connect to remote")
 		r, err := remote.Connect(c)
 		if err != nil {
-			_, _ = fmt.Fprintln(os.Stderr, "failed to connect to remote:", err.Error())
-			os.Exit(1)
-			return
+			return errors.Join(errors.New("failed to connect to remote"), err)
 		}
 
+        defer r.Close()
+
 		if !options.FlagForce {
+			log.Println("check if remote repo does not exist")
 			if empty, err := r.RepoIsEmpty(); err != nil {
-				_, _ = fmt.Fprintln(os.Stderr, "failed checking if remote directory is empty:", err.Error())
-				os.Exit(1)
-				return
+				return errors.Join(errors.New("failed checking if remote directory is empty"), err)
 			} else if !empty {
-				_, _ = fmt.Fprintln(os.Stderr, "Remote directory exists and is not empty. Delete it manually or choose another remote directory.")
-				os.Exit(2)
-				return
+				return errors.New("Remote directory exists and is not empty. Delete it manually or choose another remote directory.")
 			}
 		}
 
+		log.Println("initialize local history")
 		if err := history.Init(); err != nil {
-			_, _ = fmt.Fprintln(os.Stderr, "failed to initialize history:", err.Error())
-		}
+			return errors.Join(errors.New("failed to initialize history"), err)
+        }
 
+
+
+		log.Println("save local scribe config")
 		if err := c.SaveNew(); err != nil {
-			_, _ = fmt.Fprintln(os.Stderr, "failed to save config:", err.Error())
-			_ = r.Close()
-			os.Exit(1)
-			return
+			return errors.Join(errors.New("failed to save config"), err)
 		}
 
+		log.Println("create inital commit")
 		if err := r.InitialCommit(); err != nil {
-			_, _ = fmt.Fprintln(os.Stderr, "failed to create initial commit:", err.Error())
-			_ = r.Close()
-			os.Exit(1)
-			return
+			return errors.Join(errors.New("failed to create initial commit"), err)
 		}
 
-		if err := r.Close(); err != nil {
-			_, _ = fmt.Fprintln(os.Stderr, "failed to disconnect from remote:", err.Error())
-			os.Exit(1)
-			return
-		}
+        return nil
 	},
 }
 
